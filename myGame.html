@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>My game</title>
+        <style type="text/css">
+            body {
+                font-family: helvetica;
+            }
+        </style>
+    </head>
+    <script>
+        año = -1325
+        function checkDate() {
+        let numero = document.getElementById("GET-name").value;
+
+        numero = Number(numero);
+        diferencia = año - numero 
+
+        puntuacion = 2000-Math.abs(diferencia)
+
+        if(puntuacion<0) {
+            puntuacion=0
+        }
+
+        let texto = "Puntuación: " + puntuacion;
+
+        document.getElementById("puntuación").innerText = texto;
+      }
+    </script>
+    <body>
+        <h1>MI JUEGO</h1>
+
+        <h2>¿En qué año se hizo?</h2>
+
+        <img src="960px-CairoEgMuseumTaaMaskMostlyPhotographed.jpg" width="500">
+
+        <form action="">
+          <label for="GET-name">Año:</label>
+          <input id="GET-name" type="number" name="name" />
+          <input type="button" value="Confirmar" onclick="checkDate()" />
+        </form>
+
+        <h3 id="puntuación"></h3>
+    </body>
+</html>
