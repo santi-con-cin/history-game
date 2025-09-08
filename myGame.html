@@ -3,44 +3,257 @@
     <head>
         <meta charset="utf-8">
         <title>My game</title>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <style type="text/css">
             body {
                 font-family: helvetica;
             }
+            #map {
+                height: 400px;
+                width: 100%;
+                margin: 20px 0;
+                border: 2px solid #ccc;
+                border-radius: 5px;
+            }
+            .location-result {
+                margin: 10px 0;
+                padding: 10px;
+                background-color: #f0f0f0;
+                border-radius: 5px;
+            }
+            .score-highlight {
+                font-weight: bold;
+                color: #2e7d32;
+            }
         </style>
     </head>
     <script>
-        año = -1325
-        function checkDate() {
-        let numero = document.getElementById("GET-name").value;
+        let currentPiece = null;
+        let map = null;
+        let selectedMarker = null;
 
-        numero = Number(numero);
-        diferencia = año - numero 
+        async function loadRandomPiece() {
+            try {
+                const response = await fetch('http://localhost:8000/random-piece');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch piece');
+                }
+                currentPiece = await response.json();
 
-        puntuacion = 2000-Math.abs(diferencia)
+                // Update image
+                document.getElementById("piece-image").src = 'http://localhost:8000' + currentPiece.image;
 
-        if(puntuacion<0) {
-            puntuacion=0
+                // Update title with culture
+                document.getElementById("piece-title").innerText = `Objeto de la cultura: ${currentPiece.culture}`;
+
+                // Clear previous input and score
+                document.getElementById("GET-name").value = "";
+                document.getElementById("puntuación").innerText = "";
+                document.getElementById("location-result").innerHTML = "";
+
+                // Clear selected marker
+                if (selectedMarker) {
+                    map.removeLayer(selectedMarker);
+                    selectedMarker = null;
+                }
+
+                // Hide object info for new piece
+                document.getElementById("object-info").style.display = "none";
+
+            } catch (error) {
+                console.error('Error loading piece:', error);
+                document.getElementById("piece-title").innerText = "Error cargando objeto histórico";
+            }
         }
 
-        let texto = "Puntuación: " + puntuacion;
+        function initMap() {
+            // Initialize the map centered on the world
+            map = L.map('map').setView([20, 0], 2);
 
-        document.getElementById("puntuación").innerText = texto;
-      }
+            // Add OpenStreetMap tiles
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+
+            // Add click event listener
+            map.on('click', function(e) {
+                selectLocation(e.latlng.lat, e.latlng.lng);
+            });
+        }
+
+        function selectLocation(lat, lng) {
+            // Remove previous marker if exists
+            if (selectedMarker) {
+                map.removeLayer(selectedMarker);
+            }
+
+            // Add new marker
+            selectedMarker = L.marker([lat, lng]).addTo(map)
+                .bindPopup(`Selected location: ${lat.toFixed(4)}, ${lng.toFixed(4)}`)
+                .openPopup();
+
+            // Store coordinates for validation
+            selectedMarker.selectedLat = lat;
+            selectedMarker.selectedLng = lng;
+        }
+
+        async function validateLocation() {
+            if (!currentPiece) {
+                alert("Por favor, carga un objeto primero");
+                return;
+            }
+
+            if (!selectedMarker) {
+                alert("Por favor, selecciona una ubicación en el mapa");
+                return;
+            }
+
+            let userDate = document.getElementById("GET-name").value;
+            if (!userDate) {
+                alert("Por favor, introduce un año");
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:8000/validate-location', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        piece_id: currentPiece.id,
+                        date: userDate,
+                        latitude: selectedMarker.selectedLat,
+                        longitude: selectedMarker.selectedLng
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to validate location');
+                }
+
+                const result = await response.json();
+
+                // Display results
+                let resultHtml = `
+                    <div class="location-result">
+                        <h4>Resultado de Localización:</h4>
+                        <p><strong>Distancia:</strong> ${result.distance_km} km</p>
+                        <p><strong>Diferencia de años:</strong> ${result.date_difference}</p>
+                        <p><strong>Puntuación total: <span class="score-highlight">${result.score}</span></strong></p>
+                        <p><small>Ubicación real: ${result.actual_coordinates[0].toFixed(4)}, ${result.actual_coordinates[1].toFixed(4)}</small></p>
+                        <p><small>Año real: ${result.actual_year}</small></p>
+                    </div>
+                `;
+
+                document.getElementById("location-result").innerHTML = resultHtml;
+
+                // Show actual location on map
+                L.marker(result.actual_coordinates)
+                    .addTo(map)
+                    .bindPopup(`Ubicación real: ${result.actual_coordinates[0].toFixed(4)}, ${result.actual_coordinates[1].toFixed(4)}`)
+                    .openPopup();
+
+                // Show object information
+                showObjectInfo();
+
+            } catch (error) {
+                console.error('Error validating location:', error);
+                alert('Error al validar la ubicación');
+            }
+        }
+
+        function checkDate() {
+            if (!currentPiece) {
+                alert("Por favor, carga un objeto primero");
+                return;
+            }
+
+            let numero = document.getElementById("GET-name").value;
+
+            if (!numero) {
+                alert("Por favor, introduce un año");
+                return;
+            }
+
+            numero = Number(numero);
+            let referenceYear = currentPiece.reference_year;
+            let diferencia = referenceYear - numero;
+
+            let puntuacion = 2000 - Math.abs(diferencia);
+
+            if (puntuacion < 0) {
+                puntuacion = 0;
+            }
+
+            let texto = "Puntuación por fecha: " + puntuacion;
+            //document.getElementById("puntuación").innerText = texto;
+
+            // If location is also selected, validate it
+            if (selectedMarker) {
+                validateLocation();
+            } else {
+                // Show object information after scoring
+                showObjectInfo();
+            }
+        }
+
+        function showObjectInfo() {
+            if (!currentPiece) {
+                return;
+            }
+
+            // Update title and description
+            document.getElementById("object-title").innerText = currentPiece.title;
+            document.getElementById("object-description").innerText = currentPiece.description;
+
+            // Show the info panel
+            document.getElementById("object-info").style.display = "block";
+        }
+
+        // Load a random piece and initialize map when page loads
+        window.onload = function() {
+            initMap();
+            loadRandomPiece();
+        };
     </script>
     <body>
         <h1>JUEGO DE HISTORIA</h1>
 
-        <h2>¿En qué año se hizo este objeto?</h2>
+        <div style="display: flex; align-items: flex-start;">
+            <div style="flex: 1;">
+                <h2 id="piece-title">Cargando objeto histórico...</h2>
 
-        <img src="960px-CairoEgMuseumTaaMaskMostlyPhotographed.jpg" width="500">
+                <img id="piece-image" src="" width="500" alt="Objeto histórico">
 
-        <form action="">
-          <label for="GET-name">Año:</label>
-          <input id="GET-name" type="number" name="name" />
-          <input type="button" value="Confirmar" onclick="checkDate()" />
-        </form>
+                <br><br>
 
-        <h3 id="puntuación"></h3>
+                <button onclick="loadRandomPiece()">Nuevo Objeto</button>
+
+                <form action="">
+                  <label for="GET-name">Año:</label>
+                  <input id="GET-name" type="number" name="name" />
+                  <input type="button" value="Confirmar" onclick="checkDate()" />
+                </form>
+
+                <h3 id="puntuación"></h3>
+
+                <div id="location-result"></div>
+            </div>
+
+            <div id="object-info" style="flex: 1; margin-left: 20px; display: none;">
+                <h3 id="object-title"></h3>
+                <p id="object-description"></p>
+            </div>
+        </div>
+
+        <div style="margin-top: 30px;">
+            <h3>Selecciona la ubicación del objeto histórico en el mapa:</h3>
+            <div id="map"></div>
+            <p style="font-size: 14px; color: #666;">
+                Haz clic en el mapa para seleccionar la ubicación donde crees que se encuentra el objeto histórico.
+            </p>
+        </div>
     </body>
 </html>
